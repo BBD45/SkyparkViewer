@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Model Viewer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/environments/RoomEnvironment.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; font-family: 'Inter', sans-serif; background-color: #0d1117; color: #f0f6fc; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; }
+        
+        /* 3D ViewCube Overlay Styling */
+        #view-cube-wrapper {
+            position: absolute;
+            top: 70px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            perspective: 400px;
+            z-index: 30;
+            user-select: none;
+        }
+        #view-cube-reset {
+            position: absolute;
+            top: -28px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 22px;
+            height: 22px;
+            background: rgba(30, 41, 59, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            color: #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(4px);
+        }
+        #view-cube-reset:hover {
+            background: #3b82f6;
+            color: #ffffff;
+            border-color: #60a5fa;
+            transform: translateX(-50%) scale(1.1);
+        }
+        #view-cube {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out;
+        }
+        .cube-face {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.92);
+            border: 1.5px solid #475569;
+            color: #0f172a;
+            font-size: 9px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            box-sizing: border-box;
+            transition: background 0.2s, color 0.2s;
+            backface-visibility: visible;
+        }
+        .cube-face:hover {
+            background: #3b82f6;
+            color: #ffffff;
+            border-color: #93c5fd;
+        }
+        .face-front  { transform: translateZ(30px); }
+        .face-back   { transform: rotateY(180deg) translateZ(30px); }
+        .face-right  { transform: rotateY(90deg) translateZ(30px); }
+        .face-left   { transform: rotateY(-90deg) translateZ(30px); }
+        .face-top    { transform: rotateX(90deg) translateZ(30px); }
+        .face-bottom { transform: rotateX(-90deg) translateZ(30px); }
+
+        /* Custom Scrollbar for Admin Panel */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(51, 65, 85, 0.8); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 1); }
+
+        /* Custom UI Sliders matching requested design */
+        input[type="range"].custom-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #2a3447;
+            border-radius: 9999px;
+            outline: none;
+        }
+        input[type="range"].custom-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #f59e0b;
+            cursor: pointer;
+            box-shadow: 0 0 4px rgba(245, 158, 11, 0.5);
+            transition: transform 0.1s ease;
+        }
+        input[type="range"].custom-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+        input[type="range"].custom-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #f59e0b;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- Top Navigation Header -->
+    <header class="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 bg-slate-900/80 backdrop-blur-md border-b border-slate-800">
+        <div class="flex items-center space-x-3">
+            <div class="p-2 bg-blue-600 rounded-lg text-white">
+                <i class="fa-solid fa-cube text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg leading-tight text-white">3D Model Viewer</h1>
+                <p class="text-xs text-slate-400">PBR Material & Interactive Studio Environment</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <!-- File Upload Button -->
+            <label class="cursor-pointer flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm rounded-lg shadow-md transition-all active:scale-95">
+                <i class="fa-solid fa-file-import"></i>
+                <span>Модель Оруулах (.glb, .gltf, .obj)</span>
+                <input type="file" id="file-input" accept=".glb,.gltf,.obj" class="hidden">
+            </label>
+
+            <!-- Admin Controls Toggle -->
+            <button id="toggle-admin-btn" class="flex items-center space-x-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-medium text-sm rounded-lg shadow-md transition-all active:scale-95">
+                <i class="fa-solid fa-sliders"></i>
+                <span>Материал Тохиргоо</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- 3D ViewCube Widget -->
+    <div id="view-cube-wrapper">
+        <button id="view-cube-reset" title="Харах өнцөг дахин тохируулах">
+            <i class="fa-solid fa-rotate-left"></i>
+        </button>
+        <div id="view-cube">
+            <div class="cube-face face-front" data-dir="front">FRONT</div>
+            <div class="cube-face face-back" data-dir="back">BACK</div>
+            <div class="cube-face face-right" data-dir="right">RIGHT</div>
+            <div class="cube-face face-left" data-dir="left">LEFT</div>
+            <div class="cube-face face-top" data-dir="top">TOP</div>
+            <div class="cube-face face-bottom" data-dir="bottom">BOTTOM</div>
+        </div>
+    </div>
+
+    <!-- Admin Material Controls Sidebar -->
+    <aside id="admin-panel" class="absolute top-20 left-4 z-20 w-80 max-h-[calc(100vh-6rem)] bg-slate-900/95 backdrop-blur-xl border border-slate-800 rounded-xl shadow-2xl p-4 flex flex-col hidden transition-all">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-sliders text-amber-500"></i>
+                <h2 class="font-bold text-sm text-slate-100">Материал & Рендэр Тохиргоо</h2>
+            </div>
+            <button id="close-admin-btn" class="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+            <!-- Active Material Selection -->
+            <div class="bg-slate-800/60 p-3 rounded-lg border border-slate-700/60">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs text-slate-400 font-medium">Сонгогдсон Материал:</span>
+                    <span id="selected-mat-name" class="text-xs text-amber-400 font-bold truncate max-w-[140px]">Үндсэн Material</span>
+                </div>
+                <div class="flex items-center space-x-2 mt-2">
+                    <input type="checkbox" id="chk-apply-all" class="rounded bg-slate-700 border-slate-600 text-amber-500 focus:ring-0">
+                    <label for="chk-apply-all" class="text-xs text-slate-300">Бүх материалд зэрэг үйлчлэх</label>
+                </div>
+            </div>
+
+            <!-- Material Color Settings -->
+            <div class="space-y-2">
+                <label class="text-xs font-semibold text-slate-300 block">Base Color (Үндсэн Өнгө)</label>
+                <div class="flex items-center space-x-3 bg-[#111827]/80 p-2.5 rounded-lg border border-slate-800">
+                    <input type="color" id="input-base-color" value="#323232" class="w-8 h-8 rounded border border-slate-700 bg-transparent cursor-pointer p-0">
+                    <span id="label-base-color" class="text-xs font-mono font-medium text-slate-300">#323232</span>
+                </div>
+            </div>
+
+            <!-- PBR Sliders -->
+            <div class="space-y-4 pt-1">
+                <!-- Opacity -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="text-slate-300 font-medium">Opacity (Тунгалаг)</span>
+                        <span id="val-opacity" class="text-slate-400 font-mono text-xs">1.00</span>
+                    </div>
+                    <input type="range" id="slider-opacity" min="0" max="1" step="0.01" value="1" class="custom-slider">
+                </div>
+
+                <!-- Transmission -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="text-slate-300 font-medium">Transmission (Шил)</span>
+                        <span id="val-transmission" class="text-slate-400 font-mono text-xs">0.50</span>
+                    </div>
+                    <input type="range" id="slider-transmission" min="0" max="1" step="0.01" value="0.5" class="custom-slider">
+                </div>
+
+                <!-- Roughness -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="text-slate-300 font-medium">Roughness (Барзгар)</span>
+                        <span id="val-roughness" class="text-slate-400 font-mono text-xs">0.10</span>
+                    </div>
+                    <input type="range" id="slider-roughness" min="0" max="1" step="0.01" value="0.1" class="custom-slider">
+                </div>
+
+                <!-- Metalness -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="text-slate-300 font-medium">Metalness (Металл)</span>
+                        <span id="val-metalness" class="text-slate-400 font-mono text-xs">0.60</span>
+                    </div>
+                    <input type="range" id="slider-metalness" min="0" max="1" step="0.01" value="0.6" class="custom-slider">
+                </div>
+            </div>
+
+            <!-- Render Display Options -->
+            <div class="border-t border-slate-800 pt-3 space-y-2">
+                <label class="text-xs font-semibold text-slate-300 block mb-1">Рендэр Сонголтууд</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <label class="flex items-center space-x-2 text-xs text-slate-300 bg-slate-800/40 p-2 rounded border border-slate-700/50 cursor-pointer">
+                        <input type="checkbox" id="chk-wireframe" class="rounded bg-slate-700 border-slate-600 text-amber-500">
+                        <span>Wireframe</span>
+                    </label>
+                    <label class="flex items-center space-x-2 text-xs text-slate-300 bg-slate-800/40 p-2 rounded border border-slate-700/50 cursor-pointer">
+                        <input type="checkbox" id="chk-doubleside" checked class="rounded bg-slate-700 border-slate-600 text-amber-500">
+                        <span>Double Side</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- HDRI Sky Controls -->
+            <div class="border-t border-slate-800 pt-3 space-y-3">
+                <label class="text-xs font-semibold text-slate-300 block">HDRI Sky Environment</label>
+                
+                <div>
+                    <select id="select-hdri" class="w-full bg-slate-800 text-xs text-slate-200 border border-slate-700 rounded-lg p-2 focus:ring-1 focus:ring-amber-500 outline-none">
+                        <option value="studio">Studio (Стандарт)</option>
+                        <option value="sunset">Sunset (Үдшийн Нар)</option>
+                        <option value="night">Night (Шөнө)</option>
+                        <option value="desert">Desert (Цөл)</option>
+                        <option value="custom" id="opt-custom-hdri" disabled>Custom Loaded HDRI</option>
+                    </select>
+                </div>
+
+                <!-- Custom HDRI File Upload -->
+                <div>
+                    <label class="flex items-center justify-center space-x-2 w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 border-dashed text-xs cursor-pointer transition-all">
+                        <i class="fa-solid fa-cloud-arrow-up text-amber-500"></i>
+                        <span>Гаднаас HDRI файл оруулна уу</span>
+                        <input type="file" id="hdri-file-input" accept=".hdr,.exr,.jpg,.png" class="hidden">
+                    </label>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="chk-show-hdri" class="rounded bg-slate-700 border-slate-600 text-amber-500">
+                    <label for="chk-show-hdri" class="text-xs text-slate-300">Show HDRI Sky Background</label>
+                </div>
+            </div>
+
+            <!-- Material Presets Management -->
+            <div class="border-t border-slate-800 pt-3 space-y-3">
+                <label class="text-xs font-semibold text-slate-300 block">Материалын Тохиргоо Хадгалах</label>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="btn-save-preset" class="flex items-center justify-center space-x-1.5 py-2 px-3 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-medium transition-all active:scale-95">
+                        <i class="fa-solid fa-bookmark"></i>
+                        <span>Browser-д хадгалах</span>
+                    </button>
+                    <button id="btn-reset-mat" class="flex items-center justify-center space-x-1.5 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 transition-all active:scale-95">
+                        <i class="fa-solid fa-rotate-right"></i>
+                        <span>Анхны хэвэнд</span>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="btn-export-preset" class="flex items-center justify-center space-x-1.5 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium border border-slate-700 transition-all active:scale-95">
+                        <i class="fa-solid fa-download text-amber-500"></i>
+                        <span>Export JSON</span>
+                    </button>
+                    <label class="flex items-center justify-center space-x-1.5 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium border border-slate-700 cursor-pointer transition-all active:scale-95">
+                        <i class="fa-solid fa-upload text-blue-400"></i>
+                        <span>Import JSON</span>
+                        <input type="file" id="import-preset-input" accept=".json" class="hidden">
+                    </label>
+                </div>
+
+                <div id="saved-preset-msg" class="text-[11px] text-emerald-400 font-medium hidden flex items-center space-x-1">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <span>Тохиргоо амжилттай хадгалагдлаа!</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Loading Indicator Spinner -->
+    <div id="loading-spinner" class="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden">
+        <div class="flex flex-col items-center space-y-3 p-6 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl">
+            <div class="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+            <p class="text-sm font-medium text-slate-300">Ачаалж байна, түр хүлээнэ үү...</p>
+        </div>
+    </div>
+
+    <!-- Main JavaScript Logic -->
+    <script>
+        // Global Scene Variables
+        let scene, camera, renderer, controls;
+        let currentModel = null;
+        let allMaterials = [];
+        let selectedMaterial = null;
+        let dirLight;
+
+        // UI DOM Elements
+        const container = document.getElementById('canvas-container');
+        const viewCube = document.getElementById('view-cube');
+        const viewCubeReset = document.getElementById('view-cube-reset');
+        const adminPanel = document.getElementById('admin-panel');
+        const toggleAdminBtn = document.getElementById('toggle-admin-btn');
+        const closeAdminBtn = document.getElementById('close-admin-btn');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const fileInput = document.getElementById('file-input');
+        const hdriFileInput = document.getElementById('hdri-file-input');
+
+        // Admin Inputs
+        const selectedMatNameLabel = document.getElementById('selected-mat-name');
+        const chkApplyAll = document.getElementById('chk-apply-all');
+        const inputBaseColor = document.getElementById('input-base-color');
+        const labelBaseColor = document.getElementById('label-base-color');
+        const sliderOpacity = document.getElementById('slider-opacity');
+        const valOpacity = document.getElementById('val-opacity');
+        const sliderTransmission = document.getElementById('slider-transmission');
+        const valTransmission = document.getElementById('val-transmission');
+        const sliderRoughness = document.getElementById('slider-roughness');
+        const valRoughness = document.getElementById('val-roughness');
+        const sliderMetalness = document.getElementById('slider-metalness');
+        const valMetalness = document.getElementById('val-metalness');
+        const chkWireframe = document.getElementById('chk-wireframe');
+        const chkDoubleSide = document.getElementById('chk-doubleside');
+        const selectHdri = document.getElementById('select-hdri');
+        const optCustomHdri = document.getElementById('opt-custom-hdri');
+        const chkShowHdri = document.getElementById('chk-show-hdri');
+
+        // Preset Controls DOM
+        const btnSavePreset = document.getElementById('btn-save-preset');
+        const btnResetMat = document.getElementById('btn-reset-mat');
+        const btnExportPreset = document.getElementById('btn-export-preset');
+        const importPresetInput = document.getElementById('import-preset-input');
+        const savedPresetMsg = document.getElementById('saved-preset-msg');
+
+        // Cache for initial material configurations
+        const defaultMaterialStates = new Map();
+
+        window.onload = function () {
+            init();
+        };
+
+        // Main Initialization function
+        function init() {
+            // 1. Scene Setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0d1117);
+
+            // 2. Camera Setup
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(3, 2, 5);
+
+            // 3. Renderer Setup
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            
+            // Color space & Tone mapping standard for THREE.js r128
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.0;
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            
+            container.appendChild(renderer.domElement);
+
+            // 4. Orbit Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // 5. Studio Lighting Rig Setup
+            setupLighting();
+
+            // 6. Environment
+            generateStudioEnvironment('studio');
+
+            // 7. Event Listeners & Admin Controls Setup
+            setupEvents();
+            setupViewCube();
+            setupAdminControls();
+
+            // 8. Load default initial mesh (Placeholder Box with material)
+            createDefaultModel();
+
+            // 9. Animation Loop
+            animate();
+        }
+
+        // Default initial placeholder model when page opens
+        function createDefaultModel() {
+            const geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x323232,
+                roughness: 0.1,
+                metalness: 0.6
+            });
+            const cube = new THREE.Mesh(geometry, material);
+            cube.castShadow = true;
+            cube.receiveShadow = true;
+            currentModel = cube;
+            scene.add(currentModel);
+            allMaterials = [material];
+            selectedMaterial = material;
+            updateAdminPanelUI();
+        }
+
+        // Lighting Setup
+        function setupLighting() {
+            // Ambient soft bounce
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            // Key Directional Light
+            dirLight = new THREE.DirectionalLight(0xfff5ea, 1.2);
+            dirLight.position.set(5, 8, 5);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = 25;
+            dirLight.shadow.bias = -0.0001;
+            scene.add(dirLight);
+
+            // Fill Light
+            const fillLight = new THREE.DirectionalLight(0xb0d8ff, 0.4);
+            fillLight.position.set(-5, 4, -4);
+            scene.add(fillLight);
+        }
+
+        // Apply Material Fixes on Loaded Models to avoid white/overexposed rendering
+        function normalizeMaterials(object) {
+            allMaterials = [];
+            defaultMaterialStates.clear();
+
+            object.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+
+                    if (child.material) {
+                        const materials = Array.isArray(child.material) ? child.material : [child.material];
+                        materials.forEach((mat) => {
+                            if (!allMaterials.includes(mat)) {
+                                allMaterials.push(mat);
+                            }
+                            // Store original material state for reset
+                            if (!defaultMaterialStates.has(mat)) {
+                                defaultMaterialStates.set(mat, {
+                                    color: mat.color ? '#' + mat.color.getHexString() : '#ffffff',
+                                    opacity: mat.opacity !== undefined ? mat.opacity : 1.0,
+                                    transmission: mat.transmission !== undefined ? mat.transmission : 0.0,
+                                    roughness: mat.roughness !== undefined ? mat.roughness : 0.5,
+                                    metalness: mat.metalness !== undefined ? mat.metalness : 0.0,
+                                    wireframe: !!mat.wireframe,
+                                    side: mat.side
+                                });
+                            }
+                            // Reset overexposed / washed out colors
+                            if (mat.map) mat.map.encoding = THREE.sRGBEncoding;
+                            if (mat.emissiveMap) mat.emissiveMap.encoding = THREE.sRGBEncoding;
+                            mat.needsUpdate = true;
+                        });
+                    }
+                }
+            });
+
+            if (allMaterials.length > 0) {
+                selectedMaterial = allMaterials[0];
+                loadSavedLocalStoragePreset();
+                updateAdminPanelUI();
+            }
+        }
+
+        // Helper to extract material state payload
+        function getMaterialStatePayload(mat) {
+            return {
+                name: mat.name || 'Unnamed',
+                color: mat.color ? '#' + mat.color.getHexString() : '#ffffff',
+                opacity: mat.opacity !== undefined ? mat.opacity : 1.0,
+                transmission: mat.transmission !== undefined ? mat.transmission : 0.0,
+                roughness: mat.roughness !== undefined ? mat.roughness : 0.5,
+                metalness: mat.metalness !== undefined ? mat.metalness : 0.0,
+                wireframe: !!mat.wireframe,
+                doubleSide: mat.side === THREE.DoubleSide
+            };
+        }
+
+        // Apply state payload to material object
+        function applyStateToMaterial(mat, state) {
+            if (!mat || !state) return;
+            if (mat.color && state.color) mat.color.set(state.color);
+            if (state.opacity !== undefined) {
+                mat.opacity = state.opacity;
+                mat.transparent = state.opacity < 1.0 || (state.transmission && state.transmission > 0);
+            }
+            if (state.transmission !== undefined) {
+                mat.transmission = state.transmission;
+                if (state.transmission > 0) mat.transparent = true;
+            }
+            if (state.roughness !== undefined) mat.roughness = state.roughness;
+            if (state.metalness !== undefined) mat.metalness = state.metalness;
+            if (state.wireframe !== undefined) mat.wireframe = state.wireframe;
+            if (state.doubleSide !== undefined) mat.side = state.doubleSide ? THREE.DoubleSide : THREE.FrontSide;
+            mat.needsUpdate = true;
+        }
+
+        function showPresetNotice(msg) {
+            savedPresetMsg.querySelector('span').textContent = msg;
+            savedPresetMsg.classList.remove('hidden');
+            setTimeout(() => savedPresetMsg.classList.add('hidden'), 3000);
+        }
+
+        // Save preset to LocalStorage
+        function savePresetToLocalStorage() {
+            const presetData = allMaterials.map(mat => getMaterialStatePayload(mat));
+            localStorage.setItem('3d_viewer_material_preset', JSON.stringify(presetData));
+            showPresetNotice("Browser-д тохиргоо хадгалагдлаа!");
+        }
+
+        // Load preset from LocalStorage if present
+        function loadSavedLocalStoragePreset() {
+            const saved = localStorage.getItem('3d_viewer_material_preset');
+            if (!saved) return;
+            try {
+                const presets = JSON.parse(saved);
+                if (Array.isArray(presets)) {
+                    allMaterials.forEach((mat, idx) => {
+                        if (presets[idx]) applyStateToMaterial(mat, presets[idx]);
+                    });
+                }
+            } catch(e) {
+                console.error("Local preset load error:", e);
+            }
+        }
+
+        // Export preset as .json file
+        function exportPresetJSON() {
+            const data = {
+                version: "1.0",
+                timestamp: new Date().toISOString(),
+                materials: allMaterials.map(mat => getMaterialStatePayload(mat))
+            };
+            const jsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `material_preset_${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showPresetNotice("JSON файл татагдлаа!");
+        }
+
+        // Import preset from uploaded .json file
+        function importPresetJSON(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    const matArray = parsed.materials || (Array.isArray(parsed) ? parsed : null);
+                    if (matArray) {
+                        allMaterials.forEach((mat, idx) => {
+                            if (matArray[idx]) applyStateToMaterial(mat, matArray[idx]);
+                        });
+                        updateAdminPanelUI();
+                        showPresetNotice("JSON тохиргоо ачааллаа!");
+                    }
+                } catch (err) {
+                    console.error("Preset import error:", err);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // Reset materials back to initial model load defaults
+        function resetMaterialsToDefault() {
+            allMaterials.forEach(mat => {
+                const initial = defaultMaterialStates.get(mat);
+                if (initial) {
+                    applyStateToMaterial(mat, {
+                        color: initial.color,
+                        opacity: initial.opacity,
+                        transmission: initial.transmission,
+                        roughness: initial.roughness,
+                        metalness: initial.metalness,
+                        wireframe: initial.wireframe,
+                        doubleSide: initial.side === THREE.DoubleSide
+                    });
+                }
+            });
+            updateAdminPanelUI();
+            showPresetNotice("Анхны хэвэнд орууллаа!");
+        }
+
+        let customHdriTexture = null;
+
+        function applyEnvironmentTexture(texture) {
+            scene.environment = texture;
+            if (chkShowHdri && chkShowHdri.checked) {
+                scene.background = texture;
+            } else {
+                scene.background = new THREE.Color(0x0d1117);
+            }
+        }
+
+        // Custom External HDRI Sky Loader
+        function loadCustomHDRI(file) {
+            const fileName = file.name.toLowerCase();
+            const url = URL.createObjectURL(file);
+            loadingSpinner.classList.remove('hidden');
+
+            if (fileName.endsWith('.hdr')) {
+                const rgbeLoader = new THREE.RGBELoader();
+                rgbeLoader.load(url, (texture) => {
+                    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+                    pmremGenerator.compileEquirectangularShader();
+                    const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+                    
+                    customHdriTexture = envMap;
+                    optCustomHdri.disabled = false;
+                    optCustomHdri.textContent = `Custom: ${file.name.substring(0, 12)}...`;
+                    selectHdri.value = 'custom';
+                    
+                    applyEnvironmentTexture(customHdriTexture);
+                    
+                    texture.dispose();
+                    pmremGenerator.dispose();
+                    URL.revokeObjectURL(url);
+                    loadingSpinner.classList.add('hidden');
+                }, undefined, (err) => {
+                    console.error("HDRI (.hdr) load error:", err);
+                    loadingSpinner.classList.add('hidden');
+                });
+            } else {
+                // Standard Image HDRI (EXR / JPG / PNG)
+                const textureLoader = new THREE.TextureLoader();
+                textureLoader.load(url, (texture) => {
+                    texture.mapping = THREE.EquirectangularReflectionMapping;
+                    texture.encoding = THREE.sRGBEncoding;
+
+                    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+                    pmremGenerator.compileEquirectangularShader();
+                    const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+
+                    customHdriTexture = envMap;
+                    optCustomHdri.disabled = false;
+                    optCustomHdri.textContent = `Custom: ${file.name.substring(0, 12)}...`;
+                    selectHdri.value = 'custom';
+
+                    applyEnvironmentTexture(customHdriTexture);
+
+                    texture.dispose();
+                    pmremGenerator.dispose();
+                    URL.revokeObjectURL(url);
+                    loadingSpinner.classList.add('hidden');
+                }, undefined, (err) => {
+                    console.error("HDRI Image load error:", err);
+                    loadingSpinner.classList.add('hidden');
+                });
+            }
+        }
+
+        // Procedural HDRI Presets Generator
+        function generateStudioEnvironment(preset) {
+            if (preset === 'custom' && customHdriTexture) {
+                applyEnvironmentTexture(customHdriTexture);
+                return;
+            }
+
+            const pmremGenerator = new THREE.PMREMGenerator(renderer);
+            pmremGenerator.compileEquirectangularShader();
+
+            const envScene = new THREE.RoomEnvironment();
+            const envMap = pmremGenerator.fromScene(envScene).texture;
+
+            applyEnvironmentTexture(envMap);
+            pmremGenerator.dispose();
+        }
+
+        // ViewCube Setup and Camera Direction Triggering
+        function setupViewCube() {
+            document.querySelectorAll('.cube-face').forEach(face => {
+                face.addEventListener('click', (e) => {
+                    const dir = e.target.getAttribute('data-dir');
+                    setCameraDirection(dir);
+                });
+            });
+
+            viewCubeReset.addEventListener('click', () => {
+                setCameraDirection('reset');
+            });
+        }
+
+        function setCameraDirection(direction) {
+            if (!currentModel) return;
+            const boundingBox = new THREE.Box3().setFromObject(currentModel);
+            const center = boundingBox.getCenter(new THREE.Vector3());
+            const size = boundingBox.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z) || 2;
+            const dist = maxDim * 2.5;
+
+            controls.target.copy(center);
+
+            switch (direction) {
+                case 'front':  camera.position.set(center.x, center.y, center.z + dist); break;
+                case 'back':   camera.position.set(center.x, center.y, center.z - dist); break;
+                case 'right':  camera.position.set(center.x + dist, center.y, center.z); break;
+                case 'left':   camera.position.set(center.x - dist, center.y, center.z); break;
+                case 'top':    camera.position.set(center.x, center.y + dist, center.z + 0.001); break;
+                case 'bottom': camera.position.set(center.x, center.y - dist, center.z + 0.001); break;
+                case 'reset':  camera.position.set(center.x + dist * 0.7, center.y + dist * 0.5, center.z + dist * 0.7); break;
+            }
+            controls.update();
+        }
+
+        // Synchronize ViewCube orientation with Main Camera
+        function updateViewCubeRotation() {
+            if (!camera) return;
+            const mat = new THREE.Matrix4().extractRotation(camera.matrixWorldInverse);
+            const euler = new THREE.Euler().setFromRotationMatrix(mat, 'YXZ');
+            const degX = THREE.MathUtils.radToDeg(euler.x);
+            const degY = THREE.MathUtils.radToDeg(euler.y);
+            const degZ = THREE.MathUtils.radToDeg(euler.z);
+
+            viewCube.style.transform = `rotateX(${degX}deg) rotateY(${degY}deg) rotateZ(${degZ}deg)`;
+        }
+
+        // Raycasting for object selection
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        function setupEvents() {
+            window.addEventListener('resize', onWindowResize);
+
+            // Click mesh to select its material
+            window.addEventListener('pointerdown', (e) => {
+                if (e.target.closest('#admin-panel') || e.target.closest('header') || e.target.closest('#view-cube-wrapper')) return;
+
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+
+                if (intersects.length > 0) {
+                    const hit = intersects[0].object;
+                    if (hit.isMesh && hit.material) {
+                        selectedMaterial = Array.isArray(hit.material) ? hit.material[0] : hit.material;
+                        updateAdminPanelUI();
+                    }
+                }
+            });
+
+            // 3D File Input
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) loadModelFile(file);
+            });
+
+            // External HDRI Sky File Input
+            hdriFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) loadCustomHDRI(file);
+            });
+        }
+
+        // Load 3D Models
+        function loadModelFile(file) {
+            const fileName = file.name.toLowerCase();
+            const url = URL.createObjectURL(file);
+            loadingSpinner.classList.remove('hidden');
+
+            if (currentModel) {
+                scene.remove(currentModel);
+            }
+
+            if (fileName.endsWith('.glb') || fileName.endsWith('.gltf')) {
+                const loader = new THREE.GLTFLoader();
+                loader.load(url, (gltf) => {
+                    currentModel = gltf.scene;
+                    scene.add(currentModel);
+                    normalizeMaterials(currentModel);
+                    setCameraDirection('reset');
+                    loadingSpinner.classList.add('hidden');
+                    URL.revokeObjectURL(url);
+                }, undefined, (err) => {
+                    console.error("GLTF Load Error:", err);
+                    loadingSpinner.classList.add('hidden');
+                });
+            } else if (fileName.endsWith('.obj')) {
+                const loader = new THREE.OBJLoader();
+                loader.load(url, (obj) => {
+                    currentModel = obj;
+                    scene.add(currentModel);
+                    normalizeMaterials(currentModel);
+                    setCameraDirection('reset');
+                    loadingSpinner.classList.add('hidden');
+                    URL.revokeObjectURL(url);
+                }, undefined, (err) => {
+                    console.error("OBJ Load Error:", err);
+                    loadingSpinner.classList.add('hidden');
+                });
+            }
+        }
+
+        // Admin Controls setup & event listeners
+        function setupAdminControls() {
+            toggleAdminBtn.addEventListener('click', () => adminPanel.classList.toggle('hidden'));
+            closeAdminBtn.addEventListener('click', () => adminPanel.classList.add('hidden'));
+
+            const updateTargets = (callback) => {
+                if (chkApplyAll.checked) {
+                    allMaterials.forEach(callback);
+                } else if (selectedMaterial) {
+                    callback(selectedMaterial);
+                }
+            };
+
+            // Color Picker
+            inputBaseColor.addEventListener('input', (e) => {
+                const hex = e.target.value;
+                labelBaseColor.textContent = hex.toUpperCase();
+                updateTargets(mat => {
+                    if (mat.color) mat.color.set(hex);
+                });
+            });
+
+            // Update Slider Track Filled Color
+            const updateSliderTrack = (slider) => {
+                const val = (slider.value - slider.min) / (slider.max - slider.min) * 100;
+                slider.style.background = `linear-gradient(to right, #f59e0b 0%, #f59e0b ${val}%, #2a3447 ${val}%, #2a3447 100%)`;
+            };
+
+            [sliderOpacity, sliderTransmission, sliderRoughness, sliderMetalness].forEach(slider => {
+                slider.addEventListener('input', () => updateSliderTrack(slider));
+            });
+
+            // Opacity
+            sliderOpacity.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                valOpacity.textContent = val.toFixed(2);
+                updateTargets(mat => {
+                    mat.opacity = val;
+                    mat.transparent = val < 1.0;
+                    mat.needsUpdate = true;
+                });
+            });
+
+            // Transmission
+            sliderTransmission.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                valTransmission.textContent = val.toFixed(2);
+                updateTargets(mat => {
+                    mat.transmission = val;
+                    if (val > 0) mat.transparent = true;
+                    mat.needsUpdate = true;
+                });
+            });
+
+            // Roughness
+            sliderRoughness.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                valRoughness.textContent = val.toFixed(2);
+                updateTargets(mat => {
+                    mat.roughness = val;
+                });
+            });
+
+            // Metalness
+            sliderMetalness.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                valMetalness.textContent = val.toFixed(2);
+                updateTargets(mat => {
+                    mat.metalness = val;
+                });
+            });
+
+            // Wireframe
+            chkWireframe.addEventListener('change', (e) => {
+                const isWire = e.target.checked;
+                updateTargets(mat => {
+                    mat.wireframe = isWire;
+                });
+            });
+
+            // DoubleSide
+            chkDoubleSide.addEventListener('change', (e) => {
+                const isDouble = e.target.checked;
+                updateTargets(mat => {
+                    mat.side = isDouble ? THREE.DoubleSide : THREE.FrontSide;
+                    mat.needsUpdate = true;
+                });
+            });
+
+            // HDRI Presets
+            selectHdri.addEventListener('change', (e) => {
+                generateStudioEnvironment(e.target.value);
+            });
+
+            // Show HDRI Background
+            chkShowHdri.addEventListener('change', () => {
+                generateStudioEnvironment(selectHdri.value);
+            });
+
+            // Preset Event Listeners
+            btnSavePreset.addEventListener('click', savePresetToLocalStorage);
+            btnResetMat.addEventListener('click', resetMaterialsToDefault);
+            btnExportPreset.addEventListener('click', exportPresetJSON);
+
+            importPresetInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) importPresetJSON(file);
+            });
+        }
+
+        // Update Admin UI Controls to reflect active selected material
+        function updateAdminPanelUI() {
+            if (!selectedMaterial) return;
+
+            selectedMatNameLabel.textContent = selectedMaterial.name || 'Unnamed Material';
+
+            if (selectedMaterial.color) {
+                const hexStr = '#' + selectedMaterial.color.getHexString();
+                inputBaseColor.value = hexStr;
+                labelBaseColor.textContent = hexStr.toUpperCase();
+            }
+
+            const opacityVal = selectedMaterial.opacity !== undefined ? selectedMaterial.opacity : 1.0;
+            sliderOpacity.value = opacityVal;
+            valOpacity.textContent = opacityVal.toFixed(2);
+
+            const transVal = selectedMaterial.transmission !== undefined ? selectedMaterial.transmission : 0.0;
+            sliderTransmission.value = transVal;
+            valTransmission.textContent = transVal.toFixed(2);
+
+            const roughVal = selectedMaterial.roughness !== undefined ? selectedMaterial.roughness : 0.5;
+            sliderRoughness.value = roughVal;
+            valRoughness.textContent = roughVal.toFixed(2);
+
+            const metalVal = selectedMaterial.metalness !== undefined ? selectedMaterial.metalness : 0.0;
+            sliderMetalness.value = metalVal;
+            valMetalness.textContent = metalVal.toFixed(2);
+
+            [sliderOpacity, sliderTransmission, sliderRoughness, sliderMetalness].forEach(slider => {
+                const val = (slider.value - slider.min) / (slider.max - slider.min) * 100;
+                slider.style.background = `linear-gradient(to right, #f59e0b 0%, #f59e0b ${val}%, #2a3447 ${val}%, #2a3447 100%)`;
+            });
+
+            chkWireframe.checked = !!selectedMaterial.wireframe;
+            chkDoubleSide.checked = selectedMaterial.side === THREE.DoubleSide;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            updateViewCubeRotation();
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
