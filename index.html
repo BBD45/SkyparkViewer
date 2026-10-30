@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interior 3D Model Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #121212;
+            font-family: sans-serif;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffffff;
+            font-size: 1.5rem;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px 40px;
+            border-radius: 8px;
+            letter-spacing: 1px;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">Модель ачаалж байна...</div>
+    <div id="canvas-container"></div>
+
+    <!-- Three.js болон шаардлагатай модулиудыг CDN-ээр оруулах -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+
+        // 1. Scene, Camera, Renderer үүсгэх
+        const container = document.getElementById('canvas-container');
+        const loadingEl = document.getElementById('loading');
+
+        const scene = new THREE.Scene();
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.25, 100);
+        camera.position.set(-5, 2, 5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        container.appendChild(renderer.domElement);
+
+        // 2. Orbit Controls нэмэх (Камерыг эргүүлэх, ойртож холдох)
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.target.set(0, 1, 0);
+        controls.update();
+
+        // 3. Локал файлуудын харьцангуй зам (Relative path)
+        const hdriUrl = './assets/hdri/docklands_01_4k.hdr';
+        const modelUrl = './assets/models/Interior.glb';
+
+        // 4. HDRI гэрэлтүүлэг ачаалах
+        const rgbeLoader = new RGBELoader();
+        rgbeLoader.load(hdriUrl, function (texture) {
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+
+            scene.background = texture;
+            scene.environment = texture;
+
+            // 5. Interior GLB Модель ачаалах
+            const gltfLoader = new GLTFLoader();
+            gltfLoader.load(modelUrl, function (gltf) {
+                const model = gltf.scene;
+                
+                // Материал болон сүүдрийг тохируулах
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                        if (child.material) {
+                            child.material.envMapIntensity = 1.0;
+                        }
+                    }
+                });
+
+                scene.add(model);
+
+                // Ачаалж дуусахад loading хэсгийг нуух
+                loadingEl.style.opacity = '0';
+                setTimeout(() => loadingEl.remove(), 500);
+
+            }, (xhr) => {
+                if (xhr.total) {
+                    const percent = Math.floor((xhr.loaded / xhr.total) * 100);
+                    loadingEl.innerText = `Ачаалж байна: ${percent}%`;
+                }
+            }, (error) => {
+                console.error('Модель ачаалахад алдаа гарлаа:', error);
+                loadingEl.innerText = 'Модель ачаалж чадсангүй!';
+            });
+
+        }, undefined, (error) => {
+            console.error('HDRI ачаалахад алдаа гарлаа:', error);
+            loadingEl.innerText = 'HDRI файл олдсонгүй!';
+        });
+
+        // Window resize зохицуулах
+        window.addEventListener('resize', onWindowResize);
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Render loop (Анимаци болон дүрслэл шинэчлэх)
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
